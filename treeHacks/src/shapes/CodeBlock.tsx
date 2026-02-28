@@ -11,7 +11,7 @@ import {
 import type { Geometry2d, RecordProps, TLResizeInfo, TLShape } from 'tldraw'
 import CodeMirror from '@uiw/react-codemirror'                                                                                                                                                                          
 import { python } from '@codemirror/lang-python'
-import { useState } from 'react';
+import { useState, useRef } from 'react';
 import { Pyodide } from "../pyodide"; // Make sure this path points to your pyodide file!
 
 const CODE_BLOCK_SHAPE = 'code-block-shape'
@@ -19,7 +19,7 @@ const CODE_BLOCK_SHAPE = 'code-block-shape'
 // [1] Define the shape's properties in Tldraw's global type system
 declare module 'tldraw' {
   export interface TLGlobalShapePropsMap {
-    [CODE_BLOCK_SHAPE]: { w: number; h: number; text: string }
+    [CODE_BLOCK_SHAPE]: { w: number; h: number; text: string, inputs: Array<string>, outputs: Array<string> }
   }
 }
 

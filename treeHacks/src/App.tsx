@@ -1,32 +1,66 @@
 // src/App.tsx
-import { BrowserRouter, Routes, Route, Link } from "react-router-dom";
+import { useEffect, useState } from 'react'
+import type { ReactNode } from 'react'
+import { BrowserRouter, Routes, Route, Link, Navigate, useLocation } from 'react-router-dom'
 import './App.css'
-import LoginPage from './pages/login' 
-import CanvasPage from "./pages/canvas";
+import LoginPage from './pages/login'
+import CanvasPage from './pages/canvas'
+import { fetchProfile } from './lib/auth'
+
+function RequireAuth({ children }: { children: ReactNode }) {
+  const [isLoading, setIsLoading] = useState(true)
+  const [isAuthenticated, setIsAuthenticated] = useState(false)
+  const location = useLocation()
+
+  useEffect(() => {
+    let isMounted = true
+
+    async function verifySession() {
+      const profile = await fetchProfile()
+      if (!isMounted) return
+      setIsAuthenticated(Boolean(profile?.user))
+      setIsLoading(false)
+    }
+
+    verifySession()
+
+    return () => {
+      isMounted = false
+    }
+  }, [])
+
+  if (isLoading) {
+    return (
+      <div className='min-h-screen flex items-center justify-center'>
+        <p>Loading session...</p>
+      </div>
+    )
+  }
+
+  if (!isAuthenticated) {
+    return <Navigate to='/login' replace state={{ from: location.pathname }} />
+  }
+
+  return children
+}
 
 function App() {
   return (
     <BrowserRouter>
-        <Routes>
-          <Route path="/login" element={<LoginPage />} />
-          <Route path="/canvas" element={<CanvasPage />} />
-
-          <Route path="/" element={
-            <div className="flex flex-col items-center justify-center min-h-screen">
-              <h1 className="text-4xl font-bold">Welcome to TreeHacks!</h1>
-
-              <Link to="/login" className="mt-4 text-blue-500 hover:underline">
-                Go to Login Page
-              </Link>
-              
-              <Link to="/canvas" className="mt-2 text-blue-500 hover:underline">
-                Go to Canvas Page
-              </Link>
-            </div>
-          } />
-        </Routes>
+      <Routes>
+        <Route path="/login" element={<LoginPage />} />
+        <Route
+          path='/canvas'
+          element={
+            <RequireAuth>
+              <CanvasPage />
+            </RequireAuth>
+          }
+        />
+        <Route path='/' element={<Navigate to='/canvas' replace />} />
+      </Routes>
     </BrowserRouter>
   )
 }
 
-export default App;
+export default App
