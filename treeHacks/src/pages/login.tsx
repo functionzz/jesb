@@ -7,7 +7,7 @@ export default function LoginPage() {
   const location = useLocation()
   const navigate = useNavigate()
 
-  const fromPath = (location.state as { from?: string } | null)?.from ?? '/canvas'
+  const fromPath = (location.state as { from?: string } | null)?.from ?? '/dashboard'
 
   useEffect(() => {
     let isMounted = true

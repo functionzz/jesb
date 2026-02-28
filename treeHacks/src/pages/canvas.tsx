@@ -4,7 +4,7 @@ import "tldraw/tldraw.css";
 import { CodeBlockUtil, CodeBlockTool } from "../shapes/CodeBlock";
 import { useNavigate, useSearchParams } from "react-router-dom";
 import { touchCanvas, upsertCanvas } from "@/lib/canvasStore";
-import { getApiBaseUrl, getLogoutUrl } from '../lib/auth'
+import { getApiBaseUrl, getLogoutUrl, logoutSession } from '../lib/auth'
 const API_BASE = getApiBaseUrl();
 
 
@@ -137,7 +137,6 @@ export default function CanvasPage() {
         headers: {
           'Content-Type': 'application/json',
         },
-        credentials: 'include',
         body: json,
       })
     })
@@ -163,9 +162,16 @@ export default function CanvasPage() {
     editorRef.current?.setCurrentTool("code-block");
   };
 
-    const signOut = () => {
-      const returnTo = '/login'
-      window.location.href = getLogoutUrl(returnTo)
+    const signOut = async () => {
+      try {
+        await logoutSession()
+      } catch (error) {
+        console.error('Error signing out:', error)
+        window.location.assign(getLogoutUrl('/dashboard'))
+        return
+      }
+
+      navigate('/dashboard', { replace: true })
     }
 
   if (!activeCanvasId) {

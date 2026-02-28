@@ -11,8 +11,8 @@ import {
 import type { Geometry2d, RecordProps, TLResizeInfo, TLShape } from 'tldraw'
 import CodeMirror from '@uiw/react-codemirror'                                                                                                                                                                          
 import { python } from '@codemirror/lang-python'
-import { useState, useRef } from 'react';
-import { Pyodide } from "../pyodide"; // Make sure this path points to your pyodide file!
+import { useState } from 'react'
+import { Pyodide } from '@/pyodide'
 
 const CODE_BLOCK_SHAPE = 'code-block-shape'
 
@@ -148,6 +148,8 @@ export class CodeBlockUtil extends ShapeUtil<ICustomShape> {
     w: T.number,
     h: T.number,
     text: T.string,
+    inputs: T.arrayOf(T.string),
+    outputs: T.arrayOf(T.string),
   }
 
   getDefaultProps(): ICustomShape['props'] {
@@ -155,6 +157,8 @@ export class CodeBlockUtil extends ShapeUtil<ICustomShape> {
       w: 400,
       h: 300,
       text: "print('Hello TreeHacks!')\n",
+      inputs: [],
+      outputs: [],
     }
   }
 

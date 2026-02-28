@@ -1,4 +1,4 @@
-const API_BASE = import.meta.env.VITE_API_BASE_URL ?? 'http://127.0.0.1:8000'
+const API_BASE = import.meta.env.VITE_API_BASE_URL ?? 'http://localhost:8000'
 
 function normalizePath(path: string, fallback: string) {
   if (!path) return fallback
@@ -7,13 +7,7 @@ function normalizePath(path: string, fallback: string) {
 
 function getBackendPostLoginUrl(nextPath: string) {
   const url = new URL(`${API_BASE}/post-login`)
-  url.searchParams.set('next', normalizePath(nextPath, '/canvas'))
-  return url.toString()
-}
-
-function getBackendPostLogoutUrl(nextPath: string) {
-  const url = new URL(`${API_BASE}/post-logout`)
-  url.searchParams.set('next', normalizePath(nextPath, '/login'))
+  url.searchParams.set('next', normalizePath(nextPath, '/dashboard'))
   return url.toString()
 }
 
@@ -56,7 +50,18 @@ export function getLoginUrl(nextPath: string, signUp = false) {
 }
 
 export function getLogoutUrl(returnTo: string) {
-  const url = new URL(`${API_BASE}/auth/logout`)
-  url.searchParams.set('returnTo', getBackendPostLogoutUrl(returnTo))
+  const url = new URL(`${API_BASE}/logout`)
+  url.searchParams.set('next', normalizePath(returnTo, '/dashboard'))
   return url.toString()
+}
+
+export async function logoutSession() {
+  const response = await fetch(`${API_BASE}/logout-session`, {
+    method: 'POST',
+    credentials: 'include',
+  })
+
+  if (!response.ok) {
+    throw new Error(`HTTP ${response.status}: failed to sign out`)
+  }
 }

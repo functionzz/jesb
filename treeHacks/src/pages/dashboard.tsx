@@ -1,6 +1,7 @@
 import { Link, useNavigate } from "react-router-dom";
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { loadCanvases, upsertCanvas } from "@/lib/canvasStore";
+import { fetchProfile, getApiBaseUrl, getLoginUrl, getLogoutUrl, logoutSession } from "@/lib/auth";
 
 type CanvasMeta = {
   id: string;
@@ -21,42 +22,158 @@ function formatUpdatedAt(value: string) {
 }
 
 export default function DashboardPage() {
+  const [userName, setUserName] = useState<string | null>(null);
+  const [allCanvases, setAllCanvases] = useState<CanvasMeta[]>([]);
+  const [isCreating, setIsCreating] = useState(false);
+  const [createError, setCreateError] = useState<string | null>(null);
   const [filter, setFilter] = useState<"all" | "recent">("all");
   const [editingId, setEditingId] = useState<string | null>(null);
   const [nameInput, setNameInput] = useState("");
   const [nameError, setNameError] = useState<string | null>(null);
   const navigate = useNavigate();
+  const apiBase = getApiBaseUrl();
+
+  const sortCanvasesByUpdatedAt = (list: CanvasMeta[]) => {
+    return [...list].sort((a, b) => b.updatedAt.localeCompare(a.updatedAt));
+  };
+
+  const mergeServerCanvasesWithLocalMeta = (serverCanvases: Array<{ id: string; name: string }>) => {
+    const localById = new Map(loadCanvases().map((canvas) => [canvas.id, canvas]));
+    const now = new Date().toISOString();
+
+    return serverCanvases.map((canvas) => {
+      const local = localById.get(canvas.id);
+      return {
+        id: canvas.id,
+        name: canvas.name,
+        updatedAt: local?.updatedAt ?? now,
+      };
+    });
+  };
+
+  const loadUserCanvases = async () => {
+    const response = await fetch(`${apiBase}/canvas/`, {
+      method: "GET",
+      credentials: "include",
+    });
+
+    if (!response.ok) {
+      throw new Error(`HTTP ${response.status}: failed to load canvases`);
+    }
+
+    const data = (await response.json()) as Array<{ id: string; name: string }>;
+    const merged = sortCanvasesByUpdatedAt(mergeServerCanvasesWithLocalMeta(data));
+
+    merged.forEach((canvas) => upsertCanvas(canvas));
+    setAllCanvases(merged);
+  };
+
+  useEffect(() => {
+    let isMounted = true;
+
+    async function loadProfile() {
+      const profile = await fetchProfile();
+      if (!isMounted) return;
+
+      const user = profile?.user;
+      setUserName(user?.name ?? user?.nickname ?? user?.email ?? null);
+
+      if (user) {
+        try {
+          await loadUserCanvases();
+        } catch (error) {
+          console.error("Error loading user canvases:", error);
+          setAllCanvases([]);
+        }
+        return;
+      }
+
+      setAllCanvases([]);
+    }
+
+    loadProfile();
+
+    return () => {
+      isMounted = false;
+    };
+  }, []);
+
   const canvases = useMemo(() => {
-    const list = loadCanvases();
-    const sorted = [...list].sort((a, b) => b.updatedAt.localeCompare(a.updatedAt));
-    if (filter === "recent") return sorted.slice(0, 3);
-    return sorted;
-  }, [filter]);
+    if (filter === "recent") return allCanvases.slice(0, 3);
+    return allCanvases;
+  }, [allCanvases, filter]);
 
   const normalizeName = (value: string) => value.trim().toLowerCase();
 
-  const handleCreate = async () => {
+  const handleLogIn = () => {
+    window.location.href = getLoginUrl("/dashboard");
+  };
+
+  const handleSignUp = () => {
+    window.location.href = getLoginUrl("/dashboard", true);
+  };
+
+  const handleSignOut = async () => {
+    setUserName(null);
+    setAllCanvases([]);
     try {
-      const response = await fetch("http://127.0.0.1:8000/canvas/", {
+      await logoutSession();
+    } catch (error) {
+      console.error("Error signing out:", error);
+      window.location.assign(getLogoutUrl("/dashboard"));
+      return;
+    }
+
+    navigate("/dashboard", { replace: true });
+  };
+
+  const handleCreate = async () => {
+    setCreateError(null);
+    setIsCreating(true);
+
+    try {
+      const profile = await fetchProfile();
+      if (!profile?.user) {
+        window.location.href = getLoginUrl("/dashboard");
+        return;
+      }
+
+      const response = await fetch(`${apiBase}/canvas/`, {
         method: "POST",
+        credentials: "include",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ name: "Untitled Canvas" }),
       });
+
+      if (response.status === 401 || response.status === 403) {
+        window.location.href = getLoginUrl("/dashboard");
+        return;
+      }
+
       if (!response.ok) {
         const errorText = await response.text();
-        throw new Error(`HTTP ${response.status}: ${errorText || "unknown error"}`);
+        throw new Error(errorText || `HTTP ${response.status}: failed to create canvas`);
       }
+
       const data = await response.json();
       if (data?.id) {
-        upsertCanvas({
+        const newCanvas: CanvasMeta = {
           id: data.id,
           name: data.name ?? "Untitled Canvas",
           updatedAt: new Date().toISOString(),
-        });
+        };
+        upsertCanvas(newCanvas);
+        setAllCanvases((prev) => sortCanvasesByUpdatedAt([newCanvas, ...prev.filter((canvas) => canvas.id !== newCanvas.id)]));
         navigate(`/canvas?id=${data.id}`);
+        return;
       }
+
+      setCreateError("Canvas creation returned an unexpected response.");
     } catch (error) {
       console.error("Error creating canvas:", error);
+      setCreateError("Could not create canvas. Please try again.");
+    } finally {
+      setIsCreating(false);
     }
   };
 
@@ -90,6 +207,19 @@ export default function DashboardPage() {
       name: trimmed,
       updatedAt: new Date().toISOString(),
     });
+    setAllCanvases((prev) =>
+      sortCanvasesByUpdatedAt(
+        prev.map((existingCanvas) =>
+          existingCanvas.id === canvas.id
+            ? {
+                ...existingCanvas,
+                name: trimmed,
+                updatedAt: new Date().toISOString(),
+              }
+            : existingCanvas
+        )
+      )
+    );
     cancelEdit();
   };
 
@@ -105,8 +235,25 @@ export default function DashboardPage() {
           </div>
         </div>
         <div className="dash-actions">
-          <button onClick={handleCreate} className="dash-btn dash-btn-primary">
-            New Canvas
+          {userName ? (
+            <>
+              <span className="dash-chip">{userName}</span>
+              <button onClick={handleSignOut} className="dash-btn dash-btn-ghost">
+                Sign out
+              </button>
+            </>
+          ) : (
+            <>
+              <button onClick={handleLogIn} className="dash-btn dash-btn-ghost">
+                Log in
+              </button>
+              <button onClick={handleSignUp} className="dash-btn dash-btn-outline">
+                Sign up
+              </button>
+            </>
+          )}
+          <button onClick={handleCreate} className="dash-btn dash-btn-primary" disabled={isCreating}>
+            {isCreating ? "Creating..." : "New Canvas"}
           </button>
           <button className="dash-btn dash-btn-ghost">Import</button>
         </div>
@@ -122,8 +269,8 @@ export default function DashboardPage() {
             previous canvas or start a fresh one in seconds.
           </p>
           <div className="dash-hero-cta">
-            <button onClick={handleCreate} className="dash-btn dash-btn-primary">
-              Create Canvas
+            <button onClick={handleCreate} className="dash-btn dash-btn-primary" disabled={isCreating}>
+              {isCreating ? "Creating..." : "Create Canvas"}
             </button>
             <button
               onClick={() => {
@@ -140,14 +287,23 @@ export default function DashboardPage() {
           </div>
         </div>
         <div className="dash-hero-card">
-          <div className="dash-card-header">
-            <p className="dash-card-kicker">Account</p>
-            <span className="dash-chip">Active</span>
-          </div>
-          <h3 className="dash-card-title">Workspace</h3>
-          <p className="dash-card-sub">{canvases.length} canvases</p>
+          {userName ? (
+            <>
+              <h3 className="dash-card-title">{`${userName}'s Workspace`}</h3>
+              <p className="dash-card-sub">{canvases.length} canvases</p>
+            </>
+          ) : (
+            <>
+              <h3 className="dash-card-title">Welcome</h3>
+              <p className="dash-card-sub">Sign in to view your canvases</p>
+            </>
+          )}
         </div>
       </section>
+
+      {createError && (
+        <div className="px-6 pb-4 text-sm text-rose-600">{createError}</div>
+      )}
 
       <section className="dash-section">
         <div className="dash-section-header">
@@ -180,7 +336,7 @@ export default function DashboardPage() {
                 Create a new canvas to see it appear here for quick access.
               </p>
               <div className="dash-card-actions">
-                <button onClick={handleCreate} className="dash-btn dash-btn-outline">
+                <button onClick={handleCreate} className="dash-btn dash-btn-outline" disabled={isCreating}>
                   Create Canvas
                 </button>
               </div>
