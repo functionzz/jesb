@@ -166,12 +166,45 @@ def create_canvas(canvas_in: CanvasCreate, session: SessionDep) -> Canvas:
     return canvas
 
 
+@app.get("/canvas/", response_model=list[Canvas])
+def read_canvases(
+    session: SessionDep,
+    offset: int = 0,
+    limit: Annotated[int, Query(le=100)] = 100,
+) -> list[Canvas]:
+    canvases = session.exec(select(Canvas).offset(offset).limit(limit)).all()
+    return canvases
+
+
+@app.get("/canvas/{canvas_id}", response_model=Canvas)
+def read_canvas(canvas_id: str, session: SessionDep) -> Canvas:
+    canvas = session.get(Canvas, canvas_id)
+    if not canvas:
+        raise HTTPException(status_code=404, detail="Canvas not found")
+    return canvas
+
+
+@app.delete("/canvas/{canvas_id}")
+def delete_canvas(canvas_id: str, session: SessionDep):
+    canvas = session.get(Canvas, canvas_id)
+    if not canvas:
+        raise HTTPException(status_code=404, detail="Canvas not found")
+
+    shapes = session.exec(select(Shape).where(Shape.canvas_id == canvas_id)).all()
+    for shape in shapes:
+        session.delete(shape)
+
+    session.delete(canvas)
+    session.commit()
+    return {"ok": True}
+
+
 # Shape CRUD
 
 # Get shapes for a specific canvas
 @app.get("/canvas/{canvas_id}/shapes")
 def read_shapes(canvas_id: str, session: SessionDep) -> list[Shape]:
-    shapes = session.exec(select(Shape).where(Shape.canvas_id == canvas_id))
+    shapes = session.exec(select(Shape).where(Shape.canvas_id == canvas_id)).all()
 
     return shapes
 
