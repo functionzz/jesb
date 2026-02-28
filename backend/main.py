@@ -1,14 +1,17 @@
 import os
+import uuid as uuid_lib
 from typing import Annotated, Any
 
 from auth0_fastapi.auth.auth_client import AuthClient
 from auth0_fastapi.config import Auth0Config
 from auth0_fastapi.server.routes import register_auth_routes, router
 from dotenv import load_dotenv
+from pydantic import BaseModel, ConfigDict
 from fastapi import Depends, FastAPI, HTTPException, Query, Request, Response
-from sqlmodel import Field, Session, SQLModel, create_engine, select
+from sqlmodel import Field, Relationship, Session, SQLModel, create_engine, select
+from datetime import datetime
+from sqlalchemy import Column, JSON
 from starlette.middleware.sessions import SessionMiddleware
-
 
 load_dotenv()
 
@@ -18,6 +21,32 @@ class User(SQLModel, table=True):
     username: str = Field(index=True, unique=True)
     email: str = Field(index=True, unique=True)
 
+class Canvas(SQLModel, table=True):
+    id: str = Field(
+        default_factory=lambda: str(uuid_lib.uuid4()),
+        primary_key=True,
+        unique=True,
+    )
+    tlshapes: list["TLShape"] = Relationship(back_populates="canvas")
+
+class TLShape(BaseModel):
+    id: str
+    type: str
+
+    model_config = ConfigDict(extra="allow")
+
+class Shape(SQLModel, table=True):
+    id: str = Field(primary_key=True)
+
+    document_id: str = Field(index=True)
+    type: str = Field(index=True)
+
+    data: dict = Field(
+        sa_column=Column(JSON, nullable=False)
+    )
+
+    created_at: datetime = Field(default_factory=lambda: datetime.now(datetime.timezone.utc))
+    updated_at: datetime = Field(default_factory=lambda: datetime.now(datetime.timezone.utc))
 
 sqlite_file_name = "database.db"
 sqlite_url = f"sqlite:///{sqlite_file_name}"
