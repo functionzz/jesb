@@ -9,6 +9,7 @@ from dotenv import load_dotenv
 from pydantic import BaseModel, ConfigDict
 from fastapi import Depends, FastAPI, HTTPException, Query, Request, Response
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import RedirectResponse
 from sqlmodel import Field, Relationship, Session, SQLModel, create_engine, select
 from datetime import datetime, timezone
 from sqlalchemy import Column, JSON
@@ -78,6 +79,7 @@ def get_session():
 SessionDep = Annotated[Session, Depends(get_session)]
 
 app = FastAPI(title="Auth0 FastAPI Example")
+frontend_base_url = os.getenv("FRONTEND_BASE_URL", "http://localhost:5173")
 
 session_secret = os.getenv("SESSION_SECRET")
 if not session_secret:
@@ -98,7 +100,7 @@ config = Auth0Config(
     domain=os.getenv("AUTH0_DOMAIN"),
     client_id=os.getenv("AUTH0_CLIENT_ID"),
     client_secret=os.getenv("AUTH0_CLIENT_SECRET"),
-    app_base_url=os.getenv("APP_BASE_URL", "http://localhost:3000"),
+    app_base_url=os.getenv("APP_BASE_URL", "http://localhost:8000"),
     secret=session_secret,
     authorization_params={"scope": "openid profile email"},
 )
@@ -205,6 +207,18 @@ def root() -> dict[str, str]:
         "message": "Backend is running.",
         "auth": "Visit /auth/login to start Auth0 login.",
     }
+
+
+@app.get("/post-login")
+def post_login(next: str = "/canvas"):
+    safe_next = next if next.startswith("/") else "/canvas"
+    return RedirectResponse(url=f"{frontend_base_url}{safe_next}")
+
+
+@app.get("/post-logout")
+def post_logout(next: str = "/login"):
+    safe_next = next if next.startswith("/") else "/login"
+    return RedirectResponse(url=f"{frontend_base_url}{safe_next}")
 
 
 @app.get("/profile")
