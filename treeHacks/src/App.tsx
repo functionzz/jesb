@@ -1,17 +1,25 @@
-import { useState } from 'react'
-import reactLogo from './assets/react.svg'
-import viteLogo from '/vite.svg'
+// src/App.tsx
+import { BrowserRouter, Routes, Route } from "react-router-dom";
 import './App.css'
-import { Button } from "./components/ui/button"
-function App() {
-  const [count, setCount] = useState(0)
+import LoginPage from './pages/login' // Make sure this matches your exact filename!
 
+function App() {
   return (
-    <>
+    <BrowserRouter>
+      <Routes>
+        <Route path="/login" element={<LoginPage />} />
         
-      <Button className='something'>hi there</Button>
-    </>
+        <Route path="/" element={
+          <div className="flex flex-col items-center justify-center min-h-screen">
+            <h1 className="text-4xl font-bold">Welcome to TreeHacks!</h1>
+            <a href="/login" className="mt-4 text-blue-500 hover:underline">
+              Go to Login Page
+            </a>
+          </div>
+        } />
+      </Routes>
+    </BrowserRouter>
   )
 }
 
-export default App
+export default App;
