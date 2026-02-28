@@ -4,4 +4,4 @@
 set -e
 
 # Install the required Python packages from requirements.txt
-pip install -r requirements.txt
+uv pip install -r requirements.txt
