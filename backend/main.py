@@ -8,8 +8,9 @@ from auth0_fastapi.server.routes import register_auth_routes, router
 from dotenv import load_dotenv
 from pydantic import BaseModel, ConfigDict
 from fastapi import Depends, FastAPI, HTTPException, Query, Request, Response
+from fastapi.middleware.cors import CORSMiddleware
 from sqlmodel import Field, Relationship, Session, SQLModel, create_engine, select
-from datetime import datetime
+from datetime import datetime, timezone
 from sqlalchemy import Column, JSON
 from starlette.middleware.sessions import SessionMiddleware
 
@@ -21,13 +22,17 @@ class User(SQLModel, table=True):
     username: str = Field(index=True, unique=True)
     email: str = Field(index=True, unique=True)
 
+class CanvasCreate(BaseModel):
+    name: str
+
 class Canvas(SQLModel, table=True):
     id: str = Field(
         default_factory=lambda: str(uuid_lib.uuid4()),
         primary_key=True,
         unique=True,
     )
-    tlshapes: list["TLShape"] = Relationship(back_populates="canvas")
+    name: str
+    shapes: list["Shape"] = Relationship(back_populates="canvas")
 
 class TLShape(BaseModel):
     id: str
@@ -38,15 +43,21 @@ class TLShape(BaseModel):
 class Shape(SQLModel, table=True):
     id: str = Field(primary_key=True)
 
-    document_id: str = Field(index=True)
+    canvas_id: str = Field(foreign_key="canvas.id", index=True)
+
+    document_id: str | None = Field(default=None, index=True)
     type: str = Field(index=True)
 
     data: dict = Field(
         sa_column=Column(JSON, nullable=False)
     )
 
-    created_at: datetime = Field(default_factory=lambda: datetime.now(datetime.timezone.utc))
-    updated_at: datetime = Field(default_factory=lambda: datetime.now(datetime.timezone.utc))
+    created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
+    updated_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
+
+    canvas: Canvas = Relationship(back_populates="shapes")
+
+
 
 sqlite_file_name = "database.db"
 sqlite_url = f"sqlite:///{sqlite_file_name}"
@@ -74,6 +85,15 @@ if not session_secret:
 
 app.add_middleware(SessionMiddleware, secret_key=session_secret)
 
+# CORS middleware
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["http://localhost:5173"],  # React dev server
+    allow_credentials=True,
+    allow_methods=["GET", "POST", "PUT", "DELETE", "OPTIONS"],
+    allow_headers=["Authorization", "Content-Type"],
+)
+
 config = Auth0Config(
     domain=os.getenv("AUTH0_DOMAIN"),
     client_id=os.getenv("AUTH0_CLIENT_ID"),
@@ -96,6 +116,7 @@ app.include_router(router)
 def on_startup():
     create_db_and_tables()
 
+# User CRUD
 
 @app.post("/users/")
 def create_user(user: User, session: SessionDep) -> User:
@@ -131,6 +152,51 @@ def delete_user(user_id: int, session: SessionDep):
     session.delete(user)
     session.commit()
     return {"ok": True}
+
+
+# Canvas CRUD
+@app.post("/canvas/", response_model=Canvas)
+def create_canvas(canvas_in: CanvasCreate, session: SessionDep) -> Canvas:
+    canvas = Canvas(name=canvas_in.name)
+    session.add(canvas)
+    session.commit()
+    session.refresh(canvas)
+    return canvas
+
+
+# Shape CRUD
+
+# Get shapes for a specific canvas
+@app.get("/canvas/{canvas_id}/shapes")
+def read_shapes(canvas_id: str, session: SessionDep) -> list[Shape]:
+    shapes = session.exec(select(Shape).where(Shape.canvas_id == canvas_id))
+
+    return shapes
+
+
+# Saves all shapes via Save button - deletes all existing shapes and recreates them
+@app.post("/canvas/{canvas_id}/shapes")
+def batch_save_shape(canvas_id: str, shapes: list[TLShape], session: SessionDep):
+    # Delete all existing shapes for this canvas
+    existing = session.exec(select(Shape).where(Shape.canvas_id == canvas_id)).all()
+    for shape in existing:
+        session.delete(shape)
+
+    # Create new shapes
+    db_shapes = []
+    for shape in shapes:
+        db_shape = Shape(
+            id=shape.id,
+            canvas_id=canvas_id,
+            type=shape.type,
+            data=shape.model_dump(),
+        )
+        session.add(db_shape)
+        db_shapes.append(db_shape)
+
+    session.commit()
+    return db_shapes
+
 
 
 @app.get("/")
