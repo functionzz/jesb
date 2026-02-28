@@ -10,7 +10,7 @@ import {
 import type { Geometry2d, RecordProps, TLResizeInfo, TLShape } from 'tldraw'
 import CodeMirror from '@uiw/react-codemirror'                                                                                                         
 import { python } from '@codemirror/lang-python'
-import { useState } from 'react';
+import { useState, useRef } from 'react';
 
 // There's a guide at the bottom of this file!
 
@@ -19,7 +19,7 @@ const CODE_BLOCK_SHAPE = 'code-block-shape'
 // [1]
 declare module 'tldraw' {
 	export interface TLGlobalShapePropsMap {
-		[CODE_BLOCK_SHAPE]: { w: number; h: number; text: string }
+		[CODE_BLOCK_SHAPE]: { w: number; h: number; text: string, inputs: Array<string>, outputs: Array<string> }
 	}
 }
 
@@ -29,15 +29,52 @@ type ICustomShape = TLShape<typeof CODE_BLOCK_SHAPE>
 // Functional component for the editor (hooks work here)
 function CodeBlockComponent({ shape }: { shape: ICustomShape }) {
 	const [code, setCode] = useState(shape.props.text)
+	const [isEditing, setIsEditing] = useState(false)
+	const lastClickTime = useRef(0)
+
+	const handlePointerDown = (e: React.PointerEvent) => {
+		const now = Date.now()
+		const isDoubleClick = now - lastClickTime.current < 300
+		lastClickTime.current = now
+
+		if (isDoubleClick) {
+			e.stopPropagation()
+			e.preventDefault()
+			setIsEditing(true)
+		} else if (isEditing) {
+			e.stopPropagation()
+		}
+	}
+
+	const stopPropagation = (e: React.PointerEvent | React.KeyboardEvent) => {
+		if (isEditing) {
+			e.stopPropagation()
+		}
+	}
+
+	const handleBlur = () => {
+		setIsEditing(false)
+	}
 
 	return (
-		<HTMLContainer style={{ backgroundColor: '#1e1e1e' }}>
-      <CodeMirror
-        value={code}
-        height="200px"
-        extensions={[python()]}                                                                                                                              
-        onChange={(value) => setCode(value)}
-      />
+		<HTMLContainer style={{ backgroundColor: '#1e1e1e', pointerEvents: 'all' }}>
+			<div
+				onPointerDown={handlePointerDown}
+				onPointerUp={stopPropagation}
+				onPointerMove={stopPropagation}
+				onKeyDown={stopPropagation}
+				onKeyUp={stopPropagation}
+				onBlur={handleBlur}
+				style={{ width: '100%', height: '100%' }}
+			>
+				<CodeMirror
+					value={code}
+					height="200px"
+					extensions={[python()]}
+					onChange={(value) => setCode(value)}
+					editable={isEditing}
+				/>
+			</div>
 		</HTMLContainer>
 	)
 }
@@ -50,6 +87,8 @@ export class CodeBlockUtil extends ShapeUtil<ICustomShape> {
 		w: T.number,
 		h: T.number,
 		text: T.string,
+		inputs: T.arrayOf(T.string),
+		outputs: T.arrayOf(T.string),
 	}
 
 	// [b]
@@ -58,6 +97,8 @@ export class CodeBlockUtil extends ShapeUtil<ICustomShape> {
 			w: 200,
 			h: 200,
 			text: "I'm a shape!",
+			inputs: [],
+			outputs: [],
 		}
 	}
 
@@ -70,6 +111,10 @@ export class CodeBlockUtil extends ShapeUtil<ICustomShape> {
 	}
 	override isAspectRatioLocked() {
 		return false
+	}
+	override onDoubleClick() {
+		// Prevent tldraw's default double-click behavior
+		return
 	}
 
 	// [d]
