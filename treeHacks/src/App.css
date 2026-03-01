@@ -241,15 +241,24 @@
   border-radius: 999px;
   padding: 0.7rem 1.4rem;
   font-weight: 600;
+  font-size: 0.95rem;
+  line-height: 1.2;
   display: inline-flex;
   align-items: center;
   justify-content: center;
   border: 1px solid transparent;
+  cursor: pointer;
   transition: transform 150ms ease, box-shadow 150ms ease, background 150ms ease;
 }
 
 .dash-btn:hover {
   transform: translateY(-1px);
+}
+
+.dash-btn:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+  transform: none;
 }
 
 .dash-btn-primary {
@@ -457,4 +466,110 @@
   margin-top: auto;
   display: flex;
   gap: 0.6rem;
+}
+
+.dash-select {
+  min-width: 122px;
+  padding-right: 2.2rem;
+  appearance: none;
+  -webkit-appearance: none;
+  -moz-appearance: none;
+  background-image: url("data:image/svg+xml;utf8,<svg width='12' height='8' viewBox='0 0 12 8' fill='none' xmlns='http://www.w3.org/2000/svg'><path d='M1 1.5L6 6.5L11 1.5' stroke='%230f172a' stroke-width='1.5' stroke-linecap='round' stroke-linejoin='round'/></svg>");
+  background-repeat: no-repeat;
+  background-position: right 0.9rem center;
+}
+
+.app-shell {
+  min-height: 100vh;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 1.5rem;
+  background:
+    radial-gradient(circle at 15% 20%, rgba(250, 204, 21, 0.25), transparent 45%),
+    radial-gradient(circle at 85% 15%, rgba(34, 211, 238, 0.22), transparent 40%),
+    radial-gradient(circle at 70% 80%, rgba(251, 146, 60, 0.22), transparent 45%),
+    linear-gradient(120deg, #f7f4ef 0%, #fff7e7 45%, #f2f7f7 100%);
+}
+
+.app-card {
+  width: 100%;
+  border-radius: 24px;
+  padding: 1.8rem;
+  background: rgba(255, 255, 255, 0.88);
+  box-shadow: 0 20px 40px rgba(15, 23, 42, 0.12);
+  border: 1px solid rgba(15, 23, 42, 0.08);
+  backdrop-filter: blur(10px);
+}
+
+.app-card-sm {
+  max-width: 520px;
+}
+
+.app-center {
+  text-align: center;
+  display: flex;
+  flex-direction: column;
+  gap: 0.85rem;
+  align-items: center;
+}
+
+.app-title {
+  margin: 0;
+  font-size: clamp(1.9rem, 3vw, 2.6rem);
+  color: #0f172a;
+}
+
+.app-subtitle {
+  margin: 0;
+  color: rgba(15, 23, 42, 0.7);
+}
+
+.app-note {
+  margin: 0;
+  font-size: 0.8rem;
+  color: rgba(15, 23, 42, 0.6);
+}
+
+.app-link {
+  color: #0f172a;
+  text-decoration: underline;
+  font-weight: 500;
+}
+
+.app-actions {
+  margin-top: 0.2rem;
+  display: flex;
+  gap: 0.8rem;
+  flex-wrap: wrap;
+  justify-content: center;
+}
+
+.canvas-page {
+  position: fixed;
+  inset: 0;
+}
+
+.canvas-top-actions {
+  position: absolute;
+  top: 1rem;
+  right: 1rem;
+  z-index: 50;
+}
+
+.canvas-bottom-actions {
+  position: absolute;
+  right: 1rem;
+  bottom: 1rem;
+  z-index: 50;
+  display: flex;
+  gap: 0.6rem;
+}
+
+@media (max-width: 720px) {
+  .canvas-bottom-actions {
+    left: 1rem;
+    right: 1rem;
+    flex-wrap: wrap;
+  }
 }

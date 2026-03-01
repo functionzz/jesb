@@ -19,7 +19,6 @@ import { NodeShapeUtil } from '../nodes/NodeShapeUtil'
 import { PointingPort } from '../ports/PointingPort'
 
 const customTools = [CodeBlockTool]
-const API_BASE_URL = getApiBaseUrl()
 
 // Define custom shape utilities that extend tldraw's shape system
 const shapeUtils = [CodeBlockUtil, NodeShapeUtil, ConnectionShapeUtil]
@@ -233,17 +232,13 @@ export default function CanvasPage() {
 
   if (!activeCanvasId) {
     return (
-      <div className="flex items-center justify-center min-h-screen bg-slate-50">
-        <div className="bg-white border border-slate-200 rounded-2xl shadow-lg p-8 text-center max-w-md">
-          <h2 className="text-2xl font-semibold text-slate-900">
-            No canvas selected
-          </h2>
-          <p className="text-slate-600 mt-2">
-            Create a new canvas to get started.
-          </p>
+      <div className="app-shell">
+        <div className="app-card app-card-sm app-center">
+          <h2 className="app-title">No canvas selected</h2>
+          <p className="app-subtitle">Create a new canvas to get started.</p>
           <button
             onClick={createCanvas}
-            className="mt-6 bg-slate-900 text-white px-6 py-3 rounded-lg font-semibold"
+            className="dash-btn dash-btn-primary"
           >
             Create Canvas
           </button>
@@ -252,7 +247,7 @@ export default function CanvasPage() {
     );
   }
   return (
-    <div style={{ position: 'fixed', inset: 0 }}>
+    <div className="canvas-page">
         <Tldraw
             persistenceKey="workflow"
             options={options}
@@ -282,25 +277,25 @@ export default function CanvasPage() {
                 disableTransparency(editor, ['node', 'connection'])
             }}
         />
-                <div className='absolute top-4 right-4 z-50'>
-          <button onClick={signOut} className='bg-slate-900 text-white px-4 py-2 rounded shadow'>Sign out</button>
+        <div className='canvas-top-actions'>
+          <button onClick={signOut} className='dash-btn dash-btn-ghost'>Sign out</button>
         </div>
-      <div className="absolute bottom-4 right-4 z-50 flex gap-2">
+      <div className="canvas-bottom-actions">
         <button
           onClick={() => navigate("/dashboard")}
-          className="bg-slate-900 text-white px-4 py-2 rounded shadow"
+          className="dash-btn dash-btn-primary"
         >
           Back to Dashboard
         </button>
         <button
           onClick={selectCodeBlockTool}
-          className="bg-purple-500 text-white px-4 py-2 rounded shadow"
+          className="dash-btn dash-btn-outline"
         >
           Code Block
         </button>
         <button
           onClick={exportShapes}
-          className="bg-white px-4 py-2 text-black rounded shadow"
+          className="dash-btn dash-btn-outline"
         >
           Save
         </button>
