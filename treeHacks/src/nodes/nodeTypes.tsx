@@ -21,11 +21,13 @@ import { SliderNodeDefinition } from './types/SliderNode'
 import { SubtractNodeDefinition } from './types/SubtractNode'
 import { CodeNodeDefinition } from './types/CodeNode'
 import { OutputNodeDefinition } from './types/OutputNode'
+import { GraphOutputNodeDefinition } from './types/GraphOutputNode'
 
 /** All our node types */
 export const NodeDefinitions = {
 	code: CodeNodeDefinition,
 	output: OutputNodeDefinition,
+	graphOutput: GraphOutputNodeDefinition,
 	add: AddNodeDefinition,
 	subtract: SubtractNodeDefinition,
 	multiply: MultiplyNodeDefinition,

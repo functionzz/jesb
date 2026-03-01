@@ -93,6 +93,7 @@ const backgroundOptions: Array<{ id: CanvasBackgroundPreset; label: string }> = 
 ];
 
 export default function CanvasPage() {
+  const AUTO_SAVE_STORAGE_KEY = "treehacks_canvas_auto_save_enabled"
   const saveFeedbackTimerRef = useRef<number | null>(null)
   const isSavingRef = useRef(false)
   const lastSavedShapesRef = useRef<string | null>(null)
@@ -126,6 +127,11 @@ export default function CanvasPage() {
   const [saveState, setSaveState] = useState<"idle" | "saving" | "saved" | "error" | "autosaving" | "autosaved" | "autoerror">("idle");
   const [isOptionsOpen, setIsOptionsOpen] = useState(false);
   const [backgroundPreset, setBackgroundPreset] = useState<CanvasBackgroundPreset>("paper");
+  const [autoSaveEnabled, setAutoSaveEnabled] = useState<boolean>(() => {
+    const stored = window.localStorage.getItem(AUTO_SAVE_STORAGE_KEY)
+    if (stored === null) return true
+    return stored === "true"
+  })
   const [isClearModalOpen, setIsClearModalOpen] = useState(false);
   const [isClearingCanvas, setIsClearingCanvas] = useState(false);
 
@@ -141,6 +147,10 @@ export default function CanvasPage() {
     const stored = loadCanvasBackground(activeCanvasId) as CanvasBackgroundPreset | null;
     setBackgroundPreset(stored ?? "paper");
   }, [activeCanvasId]);
+
+  useEffect(() => {
+    window.localStorage.setItem(AUTO_SAVE_STORAGE_KEY, String(autoSaveEnabled))
+  }, [autoSaveEnabled])
 
   const createCanvas = async () => {
     try {
@@ -459,7 +469,7 @@ export default function CanvasPage() {
   };
 
   useEffect(() => {
-    if (!activeCanvasId) return
+    if (!activeCanvasId || !autoSaveEnabled) return
 
     const intervalId = window.setInterval(() => {
       void persistShapes(activeCanvasId, false)
@@ -468,7 +478,7 @@ export default function CanvasPage() {
     return () => {
       window.clearInterval(intervalId)
     }
-  }, [activeCanvasId, persistShapes])
+  }, [activeCanvasId, persistShapes, autoSaveEnabled])
 
   // on save, post TLShapes to API
 
@@ -561,22 +571,34 @@ export default function CanvasPage() {
         </button>
         <button
           onClick={exportShapes}
-          className={`dash-btn ${saveState === "idle" || saveState === "saved" ? "dash-btn-saved" : "dash-btn-primary"}`}
+          className={`dash-btn ${
+            !autoSaveEnabled && saveState !== "saved"
+              ? "dash-btn-primary"
+              : saveState === "idle" || saveState === "saved"
+                ? "dash-btn-saved"
+                : "dash-btn-primary"
+          }`}
           disabled={saveState === "saving" || saveState === "autosaving"}
         >
-          {saveState === "saving"
-            ? "Saving..."
-            : saveState === "autosaving"
+          {!autoSaveEnabled
+            ? saveState === "saving"
               ? "Saving..."
-            : saveState === "saved"
-              ? "Saved"
-              : saveState === "autosaved"
+              : saveState === "saved"
+                ? "Saved"
+                : "Save"
+            : saveState === "saving"
+              ? "Saving..."
+              : saveState === "autosaving"
                 ? "Saving..."
-              : saveState === "error"
-                ? "Save failed"
-                : saveState === "autoerror"
-                  ? "Auto-save failed"
-                : "Saved"}
+                : saveState === "saved"
+                  ? "Saved"
+                  : saveState === "autosaved"
+                    ? "Saving..."
+                    : saveState === "error"
+                      ? "Save failed"
+                      : saveState === "autoerror"
+                        ? "Auto-save failed"
+                        : "Saved"}
         </button>
       </div>
 
@@ -605,6 +627,20 @@ export default function CanvasPage() {
 
       {isOptionsOpen ? (
         <div className="canvas-options-panel" role="menu">
+          <div className="canvas-options-section">
+            <div className="canvas-options-title">Saving</div>
+            <button
+              className={`canvas-toggle ${autoSaveEnabled ? "is-on" : "is-off"}`}
+              role="switch"
+              aria-checked={autoSaveEnabled}
+              onClick={() => setAutoSaveEnabled((enabled) => !enabled)}
+            >
+              <span>Auto-save</span>
+              <span>{autoSaveEnabled ? "On" : "Off"}</span>
+            </button>
+          </div>
+
+          <div className="canvas-options-divider" />
           <div className="canvas-options-title">Background</div>
           <div className="canvas-options-grid">
             {backgroundOptions.map((option) => (
