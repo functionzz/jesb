@@ -9,6 +9,7 @@ export type CanvasMeta = {
 const STORAGE_KEY = "treehacks_canvases";
 const PREVIEW_STORAGE_KEY = "treehacks_canvas_previews";
 const BACKGROUND_STORAGE_KEY = "treehacks_canvas_backgrounds";
+const PENDING_IMPORT_STORAGE_KEY = "treehacks_canvas_pending_imports";
 
 function safeParse(value: string | null): CanvasMeta[] {
   if (!value) return [];
@@ -126,4 +127,39 @@ export function saveCanvasBackground(id: string, preset: string) {
 
 export function loadCanvasBackground(id: string): string | null {
   return loadCanvasBackgrounds()[id] ?? null;
+}
+
+function safeParsePendingImportMap(value: string | null): Record<string, unknown> {
+  if (!value) return {};
+  try {
+    const parsed = JSON.parse(value) as Record<string, unknown>;
+    if (!parsed || typeof parsed !== "object") return {};
+    return parsed;
+  } catch {
+    return {};
+  }
+}
+
+function loadPendingImportMap(): Record<string, unknown> {
+  return safeParsePendingImportMap(localStorage.getItem(PENDING_IMPORT_STORAGE_KEY));
+}
+
+export function savePendingCanvasImport(id: string, payload: unknown) {
+  const imports = loadPendingImportMap();
+  const next = { ...imports, [id]: payload };
+  localStorage.setItem(PENDING_IMPORT_STORAGE_KEY, JSON.stringify(next));
+}
+
+export function loadPendingCanvasImport(id: string): unknown | null {
+  const imports = loadPendingImportMap();
+  return imports[id] ?? null;
+}
+
+export function clearPendingCanvasImport(id: string) {
+  const imports = loadPendingImportMap();
+  if (!(id in imports)) return;
+
+  const next = { ...imports };
+  delete next[id];
+  localStorage.setItem(PENDING_IMPORT_STORAGE_KEY, JSON.stringify(next));
 }

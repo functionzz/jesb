@@ -1,9 +1,18 @@
-import { useCallback, useEffect, useRef, useState } from "react";
-import { Tldraw, Editor, DefaultActionsMenu, DefaultQuickActions, DefaultStylePanel, TLComponents, TldrawOptions, TldrawUiToolbar, useEditor, useValue } from "tldraw";
+import { ChangeEvent, useCallback, useEffect, useRef, useState } from "react";
+import { Tldraw, Editor, DefaultActionsMenu, DefaultQuickActions, DefaultStylePanel, TLComponents, TldrawOptions, TldrawUiToolbar, getSnapshot, useEditor, useValue } from "tldraw";
 import "tldraw/tldraw.css";
 import { CodeBlockUtil, CodeBlockTool } from "../shapes/CodeBlock";
 import { useNavigate, useSearchParams } from "react-router-dom";
-import { loadCanvasBackground, saveCanvasBackground, saveCanvasPreview, touchCanvas, upsertCanvas } from "@/lib/canvasStore";
+import {
+  clearPendingCanvasImport,
+  loadCanvasBackground,
+  loadPendingCanvasImport,
+  saveCanvasBackground,
+  saveCanvasPreview,
+  touchCanvas,
+  upsertCanvas,
+} from "@/lib/canvasStore";
+import { CanvasBackgroundPreset, parseCanvasImportPayload, toCanvasExportFileName } from "@/lib/canvasTransfer";
 import { getApiBaseUrl } from '../lib/auth'
 const API_BASE = getApiBaseUrl();
 
@@ -72,16 +81,6 @@ const options: Partial<TldrawOptions> = {
 	maxPages: 1,
 }
 
-type CanvasBackgroundPreset =
-  | "paper"
-  | "sunset"
-  | "mint"
-  | "midnight"
-  | "dots-slate"
-  | "dots-indigo"
-  | "lines-sky"
-  | "lines-graph";
-
 const backgroundOptions: Array<{ id: CanvasBackgroundPreset; label: string }> = [
   { id: "paper", label: "Paper" },
   { id: "sunset", label: "Sunset" },
@@ -97,6 +96,7 @@ export default function CanvasPage() {
   const saveFeedbackTimerRef = useRef<number | null>(null)
   const isSavingRef = useRef(false)
   const lastSavedShapesRef = useRef<string | null>(null)
+  const importFileInputRef = useRef<HTMLInputElement | null>(null)
   const canvasPageRef = useRef<HTMLDivElement | null>(null)
   const zoomSyncRafRef = useRef<number | null>(null)
 
@@ -193,6 +193,25 @@ export default function CanvasPage() {
   }, []);
 
   const loadShapes = (id: string) => {
+    const pendingSnapshot = loadPendingCanvasImport(id)
+
+    if (pendingSnapshot && editorRef.current) {
+      try {
+        editorRef.current.loadSnapshot(pendingSnapshot as any)
+        const importedShapes = editorRef.current.getCurrentPageShapes()
+        if (importedShapes.length === 0) {
+          throw new Error('Imported snapshot loaded but contains no page shapes')
+        }
+
+        clearPendingCanvasImport(id)
+        lastSavedShapesRef.current = JSON.stringify(importedShapes, null, 2)
+        void persistShapes(id, true)
+        return
+      } catch (error) {
+        console.error('Failed to apply pending canvas import:', error)
+      }
+    }
+
     const apiUrl = `${API_BASE}/canvas/${id}/shapes`;
     fetchData(apiUrl).then((shapeData) => {
       if (!editorRef.current) return;
@@ -224,9 +243,9 @@ export default function CanvasPage() {
   };
 
   useEffect(() => {
-    if (!activeCanvasId || !editorRef.current) return;
+    if (!activeCanvasId || !activeEditor) return;
     loadShapes(activeCanvasId);
-  }, [activeCanvasId]);
+  }, [activeCanvasId, activeEditor]);
 
   useEffect(() => {
     const editor = activeEditor
@@ -347,6 +366,61 @@ export default function CanvasPage() {
     void persistShapes(activeCanvasId, true)
   }
 
+  const exportCanvasToFile = useCallback(() => {
+    if (!editorRef.current) return
+
+    const payload = {
+      kind: "dataframe-canvas-export",
+      version: 1,
+      exportedAt: new Date().toISOString(),
+      sourceCanvasId: activeCanvasId,
+      settings: {
+        backgroundPreset,
+      },
+      tldrawSnapshot: getSnapshot(editorRef.current.store),
+    }
+
+    const blob = new Blob([JSON.stringify(payload, null, 2)], { type: "application/json" })
+    const objectUrl = URL.createObjectURL(blob)
+    const anchor = document.createElement("a")
+    anchor.href = objectUrl
+    anchor.download = toCanvasExportFileName(activeCanvasId)
+    document.body.appendChild(anchor)
+    anchor.click()
+    anchor.remove()
+    URL.revokeObjectURL(objectUrl)
+  }, [activeCanvasId, backgroundPreset])
+
+  const importCanvasFromFile = useCallback(async (event: ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0]
+    if (!file || !editorRef.current) return
+
+    try {
+      const text = await file.text()
+      const parsed = JSON.parse(text) as unknown
+
+      const { snapshot: snapshotToLoad, backgroundPreset: importedBackground } = parseCanvasImportPayload(parsed)
+
+      editorRef.current.loadSnapshot(snapshotToLoad as any)
+
+      if (importedBackground) {
+        setBackgroundPreset(importedBackground)
+        if (activeCanvasId) {
+          saveCanvasBackground(activeCanvasId, importedBackground)
+        }
+      }
+
+      if (activeCanvasId) {
+        await persistShapes(activeCanvasId, true)
+      }
+    } catch (error) {
+      console.error("Failed to import canvas file:", error)
+      window.alert("Import failed. Please choose a valid canvas export JSON file.")
+    } finally {
+      event.target.value = ""
+    }
+  }, [activeCanvasId, persistShapes])
+
   const applyBackground = (preset: CanvasBackgroundPreset) => {
     setBackgroundPreset(preset);
     if (activeCanvasId) {
@@ -452,6 +526,25 @@ export default function CanvasPage() {
         </button>
       </div>
       <div className="canvas-top-right-actions">
+        <input
+          ref={importFileInputRef}
+          type="file"
+          accept="application/json,.json"
+          onChange={(event) => void importCanvasFromFile(event)}
+          style={{ display: "none" }}
+        />
+        <button
+          onClick={() => importFileInputRef.current?.click()}
+          className="dash-btn dash-btn-outline"
+        >
+          Import File
+        </button>
+        <button
+          onClick={exportCanvasToFile}
+          className="dash-btn dash-btn-outline"
+        >
+          Export File
+        </button>
         <button
           onClick={openClearModal}
           className="dash-btn dash-btn-outline"

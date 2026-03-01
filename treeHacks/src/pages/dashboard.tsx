@@ -1,7 +1,16 @@
 import { useNavigate } from "react-router-dom";
-import { useEffect, useMemo, useState } from "react";
-import { loadCanvasPreviews, loadCanvases, removeCanvas, upsertCanvas, type CanvasMeta } from "@/lib/canvasStore";
+import { ChangeEvent, DragEvent, useEffect, useMemo, useRef, useState } from "react";
+import {
+  loadCanvasPreviews,
+  loadCanvases,
+  removeCanvas,
+  saveCanvasBackground,
+  savePendingCanvasImport,
+  upsertCanvas,
+  type CanvasMeta,
+} from "@/lib/canvasStore";
 import { fetchProfile, getApiBaseUrl, getLoginUrl, getLogoutUrl, logoutSession } from "@/lib/auth";
+import { parseCanvasImportPayload, type ParsedCanvasImport } from "@/lib/canvasTransfer";
 
 type SortOption = "lastOpened" | "lastModified" | "dateCreated";
 
@@ -41,6 +50,10 @@ export default function DashboardPage() {
   const [deleteTarget, setDeleteTarget] = useState<CanvasMeta | null>(null);
   const [isDeleting, setIsDeleting] = useState(false);
   const [canvasPreviews, setCanvasPreviews] = useState<Record<string, string | null>>({});
+  const [isImporting, setIsImporting] = useState(false);
+  const [isImportDragOver, setIsImportDragOver] = useState(false);
+  const [pendingImportData, setPendingImportData] = useState<ParsedCanvasImport | null>(null);
+  const importFileInputRef = useRef<HTMLInputElement | null>(null);
   const navigate = useNavigate();
   const apiBase = getApiBaseUrl();
 
@@ -195,7 +208,45 @@ export default function DashboardPage() {
     navigate("/dashboard", { replace: true });
   };
 
-  const handleCreate = async (canvasName: string) => {
+  const createImportedCanvasName = (fileName: string) => {
+    const stripped = fileName.replace(/\.json$/i, "").trim();
+    if (!stripped) return "Imported Canvas";
+    return stripped.length > 80 ? `${stripped.slice(0, 80)}…` : stripped;
+  };
+
+  const stageImportFile = async (file: File) => {
+    setCreateError(null);
+    setCreateNameError(null);
+    setIsImporting(true);
+
+    try {
+      const payload = JSON.parse(await file.text()) as unknown;
+      const parsed = parseCanvasImportPayload(payload);
+
+      if (parsed.shapesForApi.length === 0) {
+        throw new Error("No canvas content found in import file.");
+      }
+
+      setPendingImportData(parsed);
+      setCreateNameInput(createImportedCanvasName(file.name));
+      setIsCreateModalOpen(true);
+    } catch (error) {
+      console.error("Error importing canvas:", error);
+      setCreateError("Could not import this file. Please use a valid canvas JSON export.");
+      setPendingImportData(null);
+    } finally {
+      setIsImporting(false);
+    }
+  };
+
+  const importCanvasFile = async (event: ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+    if (!file) return;
+    await stageImportFile(file);
+    event.target.value = "";
+  };
+
+  const handleCreate = async (canvasName: string, importData: ParsedCanvasImport | null = null) => {
     setCreateError(null);
     setIsCreating(true);
 
@@ -233,23 +284,34 @@ export default function DashboardPage() {
           createdAt: now,
           lastOpenedAt: now,
         };
+
+        if (importData) {
+          savePendingCanvasImport(data.id, importData.snapshot);
+          if (importData.backgroundPreset) {
+            saveCanvasBackground(data.id, importData.backgroundPreset);
+          }
+        }
+
         upsertCanvas(newCanvas);
         setCanvasPreviews((prev) => ({ ...prev, [newCanvas.id]: null }));
         setAllCanvases((prev) => [newCanvas, ...prev.filter((canvas) => canvas.id !== newCanvas.id)]);
         navigate(`/canvas?id=${data.id}`);
-        return;
+        return true;
       }
 
       setCreateError("Canvas creation returned an unexpected response.");
+      return false;
     } catch (error) {
       console.error("Error creating canvas:", error);
       setCreateError("Could not create canvas. Please try again.");
+      return false;
     } finally {
       setIsCreating(false);
     }
   };
 
   const openCreateModal = () => {
+    setPendingImportData(null);
     setCreateNameInput("");
     setCreateNameError(null);
     setIsCreateModalOpen(true);
@@ -258,6 +320,7 @@ export default function DashboardPage() {
   const closeCreateModal = () => {
     if (isCreating) return;
     setIsCreateModalOpen(false);
+    setPendingImportData(null);
     setCreateNameError(null);
   };
 
@@ -271,10 +334,13 @@ export default function DashboardPage() {
       return;
     }
 
-    await handleCreate(finalName);
+    const created = await handleCreate(finalName, pendingImportData);
+    if (!created) return;
+
     setIsCreateModalOpen(false);
     setCreateNameInput("");
     setCreateNameError(null);
+    setPendingImportData(null);
   };
 
   const startEdit = (canvas: CanvasMeta) => {
@@ -375,6 +441,29 @@ export default function DashboardPage() {
     }
   };
 
+  const handleImportDragOver = (event: DragEvent<HTMLDivElement>) => {
+    event.preventDefault();
+    if (isImporting) return;
+    setIsImportDragOver(true);
+  };
+
+  const handleImportDragLeave = (event: DragEvent<HTMLDivElement>) => {
+    event.preventDefault();
+    const relatedTarget = event.relatedTarget as Node | null;
+    if (relatedTarget && event.currentTarget.contains(relatedTarget)) return;
+    setIsImportDragOver(false);
+  };
+
+  const handleImportDrop = (event: DragEvent<HTMLDivElement>) => {
+    event.preventDefault();
+    setIsImportDragOver(false);
+    if (isImporting) return;
+
+    const file = event.dataTransfer.files?.[0];
+    if (!file) return;
+    void stageImportFile(file);
+  };
+
   return (
     <div className="min-h-screen dash-bg">
       <div className="dash-glow" />
@@ -386,6 +475,13 @@ export default function DashboardPage() {
           </div>
         </div>
         <div className="dash-actions">
+          <input
+            ref={importFileInputRef}
+            type="file"
+            accept="application/json,.json"
+            onChange={(event) => void importCanvasFile(event)}
+            style={{ display: "none" }}
+          />
           {userName ? (
             <>
               <button onClick={handleSignOut} className="dash-btn dash-btn-ghost">
@@ -402,7 +498,6 @@ export default function DashboardPage() {
               </button>
             </>
           )}
-          <button className="dash-btn dash-btn-ghost">Import</button>
         </div>
       </header>
 
@@ -433,6 +528,32 @@ export default function DashboardPage() {
               <p className="dash-card-sub">Sign in to view your canvases</p>
             </>
           )}
+          <div
+            className={`dash-import-dropzone ${isImportDragOver ? "is-drag-over" : ""} ${isImporting ? "is-disabled" : ""}`}
+            onDragOver={handleImportDragOver}
+            onDragLeave={handleImportDragLeave}
+            onDrop={handleImportDrop}
+            role="button"
+            tabIndex={0}
+            onClick={() => {
+              if (isImporting) return;
+              importFileInputRef.current?.click();
+            }}
+            onKeyDown={(event) => {
+              if (isImporting) return;
+              if (event.key === "Enter" || event.key === " ") {
+                event.preventDefault();
+                importFileInputRef.current?.click();
+              }
+            }}
+            aria-label="Import canvas file"
+          >
+            <div className="dash-import-dropzone-icon" aria-hidden="true">⬆</div>
+            <p className="dash-import-dropzone-title">Drop JSON</p>
+            <p className="dash-import-dropzone-subtitle">
+              {isImporting ? "Importing..." : "or click to import"}
+            </p>
+          </div>
         </div>
       </section>
 
@@ -607,7 +728,11 @@ export default function DashboardPage() {
         <div className="dash-modal-backdrop" onClick={closeCreateModal}>
           <div className="dash-modal" onClick={(event) => event.stopPropagation()}>
             <h3 className="dash-modal-title">Create Canvas</h3>
-            <p className="dash-modal-subtitle">Choose a name for your new canvas.</p>
+            <p className="dash-modal-subtitle">
+              {pendingImportData
+                ? "Choose a name for the imported canvas."
+                : "Choose a name for your new canvas."}
+            </p>
             <label className="dash-modal-label" htmlFor="create-canvas-name">
               Canvas name
             </label>
@@ -640,7 +765,7 @@ export default function DashboardPage() {
                 onClick={() => void submitCreateCanvas()}
                 disabled={isCreating}
               >
-                {isCreating ? "Creating..." : "Create"}
+                {isCreating ? "Creating..." : pendingImportData ? "Create from Import" : "Create"}
               </button>
             </div>
           </div>
