@@ -3,7 +3,7 @@ import { Tldraw, Editor, DefaultActionsMenu, DefaultQuickActions, DefaultStylePa
 import "tldraw/tldraw.css";
 import { CodeBlockUtil, CodeBlockTool } from "../shapes/CodeBlock";
 import { useNavigate, useSearchParams } from "react-router-dom";
-import { touchCanvas, upsertCanvas } from "@/lib/canvasStore";
+import { saveCanvasPreview, touchCanvas, upsertCanvas } from "@/lib/canvasStore";
 import { getApiBaseUrl } from '../lib/auth'
 const API_BASE = getApiBaseUrl();
 
@@ -123,10 +123,13 @@ export default function CanvasPage() {
       }
       const data = await response.json();
       if (data?.id) {
+        const now = new Date().toISOString();
         upsertCanvas({
           id: data.id,
           name: data.name ?? "Untitled Canvas",
-          updatedAt: new Date().toISOString(),
+          updatedAt: now,
+          createdAt: now,
+          lastOpenedAt: now,
         });
         navigate(`/canvas?id=${data.id}`, { replace: true });
       }
@@ -134,6 +137,26 @@ export default function CanvasPage() {
       console.error("Error creating canvas:", error);
     }
   };
+
+  const updateCanvasPreview = useCallback(async (canvasIdForPreview: string) => {
+    if (!editorRef.current) return;
+
+    const shapes = editorRef.current.getCurrentPageShapes();
+    if (shapes.length === 0) {
+      saveCanvasPreview(canvasIdForPreview, null);
+      return;
+    }
+
+    try {
+      const image = await editorRef.current.toImageDataUrl(shapes, {
+        format: "png",
+        scale: 1,
+      });
+      saveCanvasPreview(canvasIdForPreview, image.url);
+    } catch (error) {
+      console.error("Error generating canvas preview:", error);
+    }
+  }, []);
 
   const loadShapes = (id: string) => {
     const apiUrl = `${API_BASE}/canvas/${id}/shapes`;
@@ -149,9 +172,11 @@ export default function CanvasPage() {
         const shapes = shapeData.map((s: { data: object }) => s.data);
         editorRef.current.createShapes(shapes);
         lastSavedShapesRef.current = JSON.stringify(shapes, null, 2)
+        void updateCanvasPreview(id)
       } else {
         editorRef.current.createShape({ type: 'node', x: 200, y: 200 });
         lastSavedShapesRef.current = null
+        void updateCanvasPreview(id)
       }
     });
   };
@@ -211,6 +236,7 @@ export default function CanvasPage() {
       }
 
       await response.json()
+      await updateCanvasPreview(canvasIdToSave)
       touchCanvas(canvasIdToSave)
       lastSavedShapesRef.current = json
 
@@ -245,7 +271,7 @@ export default function CanvasPage() {
     } finally {
       isSavingRef.current = false
     }
-  }, [])
+  }, [updateCanvasPreview])
 
   const exportShapes = () => {
     if (!activeCanvasId) return

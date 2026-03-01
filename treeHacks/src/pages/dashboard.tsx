@@ -1,13 +1,9 @@
 import { useNavigate } from "react-router-dom";
 import { useEffect, useMemo, useState } from "react";
-import { loadCanvases, removeCanvas, upsertCanvas } from "@/lib/canvasStore";
+import { loadCanvasPreviews, loadCanvases, removeCanvas, upsertCanvas, type CanvasMeta } from "@/lib/canvasStore";
 import { fetchProfile, getApiBaseUrl, getLoginUrl, getLogoutUrl, logoutSession } from "@/lib/auth";
 
-type CanvasMeta = {
-  id: string;
-  name: string;
-  updatedAt: string;
-};
+type SortOption = "lastOpened" | "lastModified" | "dateCreated";
 
 const statusStyles = [
   "bg-amber-200/70 text-amber-900 border-amber-400/50",
@@ -27,6 +23,7 @@ export default function DashboardPage() {
   const [isCreating, setIsCreating] = useState(false);
   const [createError, setCreateError] = useState<string | null>(null);
   const [searchQuery, setSearchQuery] = useState("");
+  const [sortBy, setSortBy] = useState<SortOption>("lastOpened");
   const [editingId, setEditingId] = useState<string | null>(null);
   const [nameInput, setNameInput] = useState("");
   const [nameError, setNameError] = useState<string | null>(null);
@@ -36,11 +33,28 @@ export default function DashboardPage() {
   const [createNameError, setCreateNameError] = useState<string | null>(null);
   const [deleteTarget, setDeleteTarget] = useState<CanvasMeta | null>(null);
   const [isDeleting, setIsDeleting] = useState(false);
+  const [canvasPreviews, setCanvasPreviews] = useState<Record<string, string | null>>({});
   const navigate = useNavigate();
   const apiBase = getApiBaseUrl();
 
-  const sortCanvasesByUpdatedAt = (list: CanvasMeta[]) => {
-    return [...list].sort((a, b) => b.updatedAt.localeCompare(a.updatedAt));
+  const toTime = (value?: string) => {
+    if (!value) return 0;
+    const date = new Date(value);
+    return Number.isNaN(date.getTime()) ? 0 : date.getTime();
+  };
+
+  const sortCanvases = (list: CanvasMeta[], criterion: SortOption) => {
+    return [...list].sort((a, b) => {
+      if (criterion === "lastOpened") {
+        return toTime(b.lastOpenedAt) - toTime(a.lastOpenedAt);
+      }
+
+      if (criterion === "dateCreated") {
+        return toTime(b.createdAt ?? b.updatedAt) - toTime(a.createdAt ?? a.updatedAt);
+      }
+
+      return toTime(b.updatedAt) - toTime(a.updatedAt);
+    });
   };
 
   const mergeServerCanvasesWithLocalMeta = (serverCanvases: Array<{ id: string; name: string }>) => {
@@ -53,6 +67,8 @@ export default function DashboardPage() {
         id: canvas.id,
         name: canvas.name,
         updatedAt: local?.updatedAt ?? now,
+        createdAt: local?.createdAt ?? local?.updatedAt ?? now,
+        lastOpenedAt: local?.lastOpenedAt,
       };
     });
   };
@@ -68,10 +84,17 @@ export default function DashboardPage() {
     }
 
     const data = (await response.json()) as Array<{ id: string; name: string }>;
-    const merged = sortCanvasesByUpdatedAt(mergeServerCanvasesWithLocalMeta(data));
+    const merged = mergeServerCanvasesWithLocalMeta(data);
 
     merged.forEach((canvas) => upsertCanvas(canvas));
     setAllCanvases(merged);
+
+    const savedPreviews = loadCanvasPreviews();
+    const nextPreviews: Record<string, string | null> = {};
+    merged.forEach((canvas) => {
+      nextPreviews[canvas.id] = savedPreviews[canvas.id] ?? null;
+    });
+    setCanvasPreviews(nextPreviews);
   };
 
   useEffect(() => {
@@ -108,9 +131,27 @@ export default function DashboardPage() {
 
   const canvases = useMemo(() => {
     const normalizedQuery = searchQuery.trim().toLowerCase();
-    if (!normalizedQuery) return allCanvases;
-    return allCanvases.filter((canvas) => canvas.name.toLowerCase().includes(normalizedQuery));
-  }, [allCanvases, searchQuery]);
+    const filtered = !normalizedQuery
+      ? allCanvases
+      : allCanvases.filter((canvas) => canvas.name.toLowerCase().includes(normalizedQuery));
+    return sortCanvases(filtered, sortBy);
+  }, [allCanvases, searchQuery, sortBy]);
+
+  const openCanvas = (canvas: CanvasMeta) => {
+    const now = new Date().toISOString();
+    const updated: CanvasMeta = {
+      ...canvas,
+      lastOpenedAt: now,
+      createdAt: canvas.createdAt ?? canvas.updatedAt ?? now,
+    };
+    upsertCanvas(updated);
+    setAllCanvases((prev) =>
+      prev.map((existingCanvas) =>
+        existingCanvas.id === canvas.id ? { ...existingCanvas, lastOpenedAt: now } : existingCanvas
+      )
+    );
+    navigate(`/canvas?id=${canvas.id}`);
+  };
 
   const handleLogIn = () => {
     window.location.href = getLoginUrl("/dashboard");
@@ -164,13 +205,17 @@ export default function DashboardPage() {
 
       const data = await response.json();
       if (data?.id) {
+        const now = new Date().toISOString();
         const newCanvas: CanvasMeta = {
           id: data.id,
           name: data.name ?? canvasName,
-          updatedAt: new Date().toISOString(),
+          updatedAt: now,
+          createdAt: now,
+          lastOpenedAt: now,
         };
         upsertCanvas(newCanvas);
-        setAllCanvases((prev) => sortCanvasesByUpdatedAt([newCanvas, ...prev.filter((canvas) => canvas.id !== newCanvas.id)]));
+        setCanvasPreviews((prev) => ({ ...prev, [newCanvas.id]: null }));
+        setAllCanvases((prev) => [newCanvas, ...prev.filter((canvas) => canvas.id !== newCanvas.id)]);
         navigate(`/canvas?id=${data.id}`);
         return;
       }
@@ -238,22 +283,23 @@ export default function DashboardPage() {
       setNameError("That name already exists. Please choose a unique name.");
       return;
     }
+    const now = new Date().toISOString();
     upsertCanvas({
       id: canvas.id,
       name: trimmed,
-      updatedAt: new Date().toISOString(),
+      updatedAt: now,
+      createdAt: canvas.createdAt ?? canvas.updatedAt ?? now,
+      lastOpenedAt: canvas.lastOpenedAt,
     });
     setAllCanvases((prev) =>
-      sortCanvasesByUpdatedAt(
-        prev.map((existingCanvas) =>
-          existingCanvas.id === canvas.id
-            ? {
-                ...existingCanvas,
-                name: trimmed,
-                updatedAt: new Date().toISOString(),
-              }
-            : existingCanvas
-        )
+      prev.map((existingCanvas) =>
+        existingCanvas.id === canvas.id
+          ? {
+              ...existingCanvas,
+              name: trimmed,
+              updatedAt: now,
+            }
+          : existingCanvas
       )
     );
     cancelEdit();
@@ -289,6 +335,11 @@ export default function DashboardPage() {
       }
 
       removeCanvas(deleteTarget.id);
+      setCanvasPreviews((prev) => {
+        const next = { ...prev };
+        delete next[deleteTarget.id];
+        return next;
+      });
       setAllCanvases((prev) => prev.filter((existingCanvas) => existingCanvas.id !== deleteTarget.id));
 
       if (editingId === deleteTarget.id) {
@@ -373,13 +424,25 @@ export default function DashboardPage() {
       <section className="dash-section">
         <div className="dash-section-header">
           <h3>Canvases</h3>
-          <input
-            className="dash-search"
-            value={searchQuery}
-            onChange={(event) => setSearchQuery(event.target.value)}
-            placeholder="Search canvases"
-            aria-label="Search canvases"
-          />
+          <div className="dash-section-controls">
+            <select
+              className="dash-sort"
+              value={sortBy}
+              onChange={(event) => setSortBy(event.target.value as SortOption)}
+              aria-label="Sort canvases"
+            >
+              <option value="lastOpened">Last opened</option>
+              <option value="lastModified">Last modified</option>
+              <option value="dateCreated">Date created</option>
+            </select>
+            <input
+              className="dash-search"
+              value={searchQuery}
+              onChange={(event) => setSearchQuery(event.target.value)}
+              placeholder="Search canvases"
+              aria-label="Search canvases"
+            />
+          </div>
         </div>
 
         <div className="dash-grid">
@@ -412,13 +475,13 @@ export default function DashboardPage() {
                 tabIndex={editingId === canvas.id ? undefined : 0}
                 onClick={() => {
                   if (editingId === canvas.id) return;
-                  navigate(`/canvas?id=${canvas.id}`);
+                  openCanvas(canvas);
                 }}
                 onKeyDown={(event) => {
                   if (editingId === canvas.id) return;
                   if (event.key === "Enter" || event.key === " ") {
                     event.preventDefault();
-                    navigate(`/canvas?id=${canvas.id}`);
+                    openCanvas(canvas);
                   }
                 }}
               >
@@ -454,6 +517,13 @@ export default function DashboardPage() {
                 ) : (
                   <h4 className="dash-card-name">{canvas.name}</h4>
                 )}
+                <div className="dash-card-preview">
+                  {canvasPreviews[canvas.id] ? (
+                    <img src={canvasPreviews[canvas.id] as string} alt={`${canvas.name} preview`} className="dash-card-preview-image" />
+                  ) : (
+                    <div className="dash-card-preview-empty">No preview yet</div>
+                  )}
+                </div>
                 <div className="dash-card-actions" onClick={(event) => event.stopPropagation()}>
                   {editingId === canvas.id ? (
                     <>

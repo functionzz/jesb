@@ -11,7 +11,7 @@ import {
 import type { Geometry2d, RecordProps, TLResizeInfo, TLShape } from 'tldraw'
 import CodeMirror from '@uiw/react-codemirror'                                                                                                                                                                          
 import { python } from '@codemirror/lang-python'
-import { useState } from 'react'
+import { useState, type PointerEvent as ReactPointerEvent } from 'react'
 import { Pyodide } from '@/pyodide'
 
 const CODE_BLOCK_SHAPE = 'code-block-shape'
@@ -29,6 +29,9 @@ type ICustomShape = TLShape<typeof CODE_BLOCK_SHAPE>
 // [3] The React component that renders inside the shape
 function CodeBlockComponent({ shape }: { shape: ICustomShape }) {
   const editor = useEditor()
+  const MIN_WIDTH = 260
+  const MIN_HEIGHT = 180
+  const consoleHeightPx = Math.max(56, Math.round(shape.props.h * 0.28))
   
   // Local state to hold the output and loading status for THIS specific block
   const [output, setOutput] = useState<string | null>(null);
@@ -41,6 +44,71 @@ function CodeBlockComponent({ shape }: { shape: ICustomShape }) {
       type: CODE_BLOCK_SHAPE,
       props: { text: value },
     })
+  }
+
+  const beginEdgeResize = (
+    edge: 'left' | 'right' | 'top' | 'bottom',
+    event: ReactPointerEvent<HTMLDivElement>
+  ) => {
+    event.preventDefault()
+    event.stopPropagation()
+
+    editor.setSelectedShapes([shape.id])
+
+    const startClientX = event.clientX
+    const startClientY = event.clientY
+    const startW = shape.props.w
+    const startH = shape.props.h
+    const startX = shape.x
+    const startY = shape.y
+
+    const onMove = (moveEvent: PointerEvent) => {
+      const zoom = typeof editor.getZoomLevel === 'function' ? editor.getZoomLevel() : 1
+      const deltaX = (moveEvent.clientX - startClientX) / zoom
+      const deltaY = (moveEvent.clientY - startClientY) / zoom
+
+      let nextW = startW
+      let nextH = startH
+      let nextX = startX
+      let nextY = startY
+
+      if (edge === 'right') {
+        nextW = Math.max(MIN_WIDTH, startW + deltaX)
+      }
+
+      if (edge === 'left') {
+        nextW = Math.max(MIN_WIDTH, startW - deltaX)
+        nextX = startX + (startW - nextW)
+      }
+
+      if (edge === 'bottom') {
+        nextH = Math.max(MIN_HEIGHT, startH + deltaY)
+      }
+
+      if (edge === 'top') {
+        nextH = Math.max(MIN_HEIGHT, startH - deltaY)
+        nextY = startY + (startH - nextH)
+      }
+
+      editor.updateShape<ICustomShape>({
+        id: shape.id,
+        type: CODE_BLOCK_SHAPE,
+        x: nextX,
+        y: nextY,
+        props: {
+          w: nextW,
+          h: nextH,
+        },
+      })
+    }
+
+    const onUp = () => {
+      window.removeEventListener('pointermove', onMove)
+      window.removeEventListener('pointerup', onUp)
+    }
+
+    window.addEventListener('pointermove', onMove)
+    window.addEventListener('pointerup', onUp)
   }
 
   // Fire the code to your custom Pyodide engine
@@ -70,15 +138,36 @@ function CodeBlockComponent({ shape }: { shape: ICustomShape }) {
       style={{ 
         display: 'flex', 
         flexDirection: 'column',
-        width: '100%',
-        height: '100%',
+        width: `${shape.props.w}px`,
+        height: `${shape.props.h}px`,
+        position: 'relative',
         backgroundColor: '#1e1e1e', 
         borderRadius: '8px',
         overflow: 'hidden',
         pointerEvents: 'all', // Ensure users can click inside the shape
         boxShadow: '0 4px 6px -1px rgba(0, 0, 0, 0.5)'
       }}
+      onPointerDownCapture={() => {
+        editor.setSelectedShapes([shape.id])
+      }}
     >
+      <div
+        onPointerDown={(event) => beginEdgeResize('top', event)}
+        style={{ position: 'absolute', top: 0, left: 8, right: 8, height: 8, cursor: 'ns-resize', zIndex: 40 }}
+      />
+      <div
+        onPointerDown={(event) => beginEdgeResize('right', event)}
+        style={{ position: 'absolute', top: 8, right: 0, bottom: 8, width: 8, cursor: 'ew-resize', zIndex: 40 }}
+      />
+      <div
+        onPointerDown={(event) => beginEdgeResize('bottom', event)}
+        style={{ position: 'absolute', bottom: 0, left: 8, right: 8, height: 8, cursor: 'ns-resize', zIndex: 40 }}
+      />
+      <div
+        onPointerDown={(event) => beginEdgeResize('left', event)}
+        style={{ position: 'absolute', top: 8, left: 0, bottom: 8, width: 8, cursor: 'ew-resize', zIndex: 40 }}
+      />
+
       {/* HEADER & RUN BUTTON */}
       <div 
         style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '6px 12px', backgroundColor: '#2d2d2d', borderBottom: '1px solid #444' }}
@@ -122,8 +211,7 @@ function CodeBlockComponent({ shape }: { shape: ICustomShape }) {
       {/* CONSOLE OUTPUT */}
       <div 
         style={{ 
-          height: '35%', 
-          minHeight: '80px', 
+          height: `${consoleHeightPx}px`, 
           backgroundColor: '#000', 
           color: '#fff', 
           padding: '8px', 
@@ -176,7 +264,15 @@ export class CodeBlockUtil extends ShapeUtil<ICustomShape> {
 
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   override onResize(shape: any, info: TLResizeInfo<any>) {
-    return resizeBox(shape, info)
+    const resized = resizeBox(shape, info) as ICustomShape
+    return {
+      ...resized,
+      props: {
+        ...resized.props,
+        w: Math.max(260, resized.props.w),
+        h: Math.max(180, resized.props.h),
+      },
+    }
   }
 
   component(shape: ICustomShape) {
