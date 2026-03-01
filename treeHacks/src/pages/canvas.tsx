@@ -4,7 +4,7 @@ import "tldraw/tldraw.css";
 import { CodeBlockUtil, CodeBlockTool } from "../shapes/CodeBlock";
 import { useNavigate, useSearchParams } from "react-router-dom";
 import { touchCanvas, upsertCanvas } from "@/lib/canvasStore";
-import { getApiBaseUrl, getLogoutUrl, logoutSession } from '../lib/auth'
+import { getApiBaseUrl } from '../lib/auth'
 const API_BASE = getApiBaseUrl();
 
 
@@ -217,19 +217,6 @@ export default function CanvasPage() {
     editorRef.current?.setCurrentTool("code-block");
   };
 
-    const signOut = async () => {
-      try {
-        await logoutSession()
-      } catch (error) {
-        console.error('Error signing out:', error)
-        window.location.assign(getLogoutUrl('/dashboard'))
-        return
-      }
-
-      navigate('/dashboard', { replace: true })
-    }
-
-
   if (!activeCanvasId) {
     return (
       <div className="flex items-center justify-center min-h-screen bg-slate-50">
@@ -251,7 +238,7 @@ export default function CanvasPage() {
     );
   }
   return (
-    <div style={{ position: 'fixed', inset: 0 }}>
+    <div className="canvas-page">
         <Tldraw
             persistenceKey="workflow"
             options={options}
@@ -281,25 +268,22 @@ export default function CanvasPage() {
                 disableTransparency(editor, ['node', 'connection'])
             }}
         />
-                <div className='absolute top-4 right-4 z-50'>
-          <button onClick={signOut} className='bg-slate-900 text-white px-4 py-2 rounded shadow'>Sign out</button>
-        </div>
-      <div className="absolute bottom-4 right-4 z-50 flex gap-2">
+      <div className="canvas-action-bar">
         <button
           onClick={() => navigate("/dashboard")}
-          className="bg-slate-900 text-white px-4 py-2 rounded shadow"
+          className="dash-btn dash-btn-ghost"
         >
           Back to Dashboard
         </button>
         <button
           onClick={selectCodeBlockTool}
-          className="bg-purple-500 text-white px-4 py-2 rounded shadow"
+          className="dash-btn dash-btn-outline"
         >
           Code Block
         </button>
         <button
           onClick={exportShapes}
-          className="bg-white px-4 py-2 text-black rounded shadow"
+          className="dash-btn dash-btn-primary"
         >
           Save
         </button>
