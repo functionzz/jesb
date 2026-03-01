@@ -34,7 +34,7 @@ function RequireAuth({ children }: { children: ReactNode }) {
     return (
       <div className='app-shell'>
         <div className='app-card app-card-sm app-center'>
-          <h1 className='app-title'>TreeHacks</h1>
+          <h1 className='app-title'>DataFrame</h1>
           <p className='app-subtitle'>Loading session...</p>
         </div>
       </div>

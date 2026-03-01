@@ -37,7 +37,7 @@ export default function LoginPage() {
     <div className='app-shell'>
       <div className='app-card app-card-sm app-center'>
         <div>
-          <h1 className='app-title'>TreeHacks</h1>
+          <h1 className='app-title'>DataFrame</h1>
           <p className='app-subtitle'>Redirecting to Auth0 login...</p>
         </div>
 

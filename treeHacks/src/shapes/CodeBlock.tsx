@@ -336,7 +336,7 @@ export class CodeBlockUtil extends ShapeUtil<ICustomShape> {
     return {
       w: 400,
       h: 300,
-      text: "print('Hello TreeHacks!')\n",
+      text: "",
       inputs: [],
       outputs: [],
     }

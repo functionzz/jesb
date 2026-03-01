@@ -362,8 +362,7 @@ export default function DashboardPage() {
         <div className="dash-brand">
           <div className="dash-mark">TH</div>
           <div>
-            <p className="dash-kicker">TreeHacks Workspace</p>
-            <h1 className="dash-title">Canvas Hub</h1>
+            <h1 className="dash-title">Dataframe</h1>
           </div>
         </div>
         <div className="dash-actions">
