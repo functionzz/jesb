@@ -8,6 +8,7 @@ export type CanvasMeta = {
 
 const STORAGE_KEY = "treehacks_canvases";
 const PREVIEW_STORAGE_KEY = "treehacks_canvas_previews";
+const BACKGROUND_STORAGE_KEY = "treehacks_canvas_backgrounds";
 
 function safeParse(value: string | null): CanvasMeta[] {
   if (!value) return [];
@@ -40,6 +41,13 @@ export function removeCanvas(id: string) {
     const nextPreviews = { ...previews };
     delete nextPreviews[id];
     localStorage.setItem(PREVIEW_STORAGE_KEY, JSON.stringify(nextPreviews));
+  }
+
+  const backgrounds = loadCanvasBackgrounds();
+  if (id in backgrounds) {
+    const nextBackgrounds = { ...backgrounds };
+    delete nextBackgrounds[id];
+    localStorage.setItem(BACKGROUND_STORAGE_KEY, JSON.stringify(nextBackgrounds));
   }
 }
 
@@ -89,4 +97,33 @@ export function saveCanvasPreview(id: string, previewDataUrl: string | null) {
 
 export function loadCanvasPreview(id: string): string | null {
   return loadCanvasPreviews()[id] ?? null;
+}
+
+function safeParseBackgroundMap(value: string | null): Record<string, string> {
+  if (!value) return {};
+  try {
+    const parsed = JSON.parse(value) as Record<string, string>;
+    if (!parsed || typeof parsed !== "object") return {};
+    return Object.fromEntries(
+      Object.entries(parsed).filter(
+        ([key, background]) => typeof key === "string" && typeof background === "string"
+      )
+    );
+  } catch {
+    return {};
+  }
+}
+
+export function loadCanvasBackgrounds(): Record<string, string> {
+  return safeParseBackgroundMap(localStorage.getItem(BACKGROUND_STORAGE_KEY));
+}
+
+export function saveCanvasBackground(id: string, preset: string) {
+  const backgrounds = loadCanvasBackgrounds();
+  const next = { ...backgrounds, [id]: preset };
+  localStorage.setItem(BACKGROUND_STORAGE_KEY, JSON.stringify(next));
+}
+
+export function loadCanvasBackground(id: string): string | null {
+  return loadCanvasBackgrounds()[id] ?? null;
 }

@@ -697,6 +697,7 @@
 .canvas-page {
   position: fixed;
   inset: 0;
+  --canvas-zoom: 1;
 }
 
 .canvas-top-left-actions {
@@ -711,6 +712,142 @@
   top: 1rem;
   right: 1rem;
   z-index: 50;
+  display: flex;
+  gap: 0.55rem;
+}
+
+.canvas-options-panel {
+  position: absolute;
+  top: 4rem;
+  right: 1rem;
+  z-index: 55;
+  width: 260px;
+  border-radius: 16px;
+  border: 1px solid rgba(15, 23, 42, 0.14);
+  background: rgba(255, 255, 255, 0.95);
+  box-shadow: 0 16px 30px rgba(15, 23, 42, 0.16);
+  padding: 0.75rem;
+}
+
+.canvas-options-title {
+  font-size: 0.85rem;
+  font-weight: 700;
+  color: #0f172a;
+  margin-bottom: 0.55rem;
+}
+
+.canvas-options-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 0.45rem;
+}
+
+.canvas-bg-option {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  border: 1px solid rgba(15, 23, 42, 0.14);
+  border-radius: 10px;
+  background: rgba(255, 255, 255, 0.88);
+  padding: 0.45rem 0.5rem;
+  color: #0f172a;
+  font-size: 0.78rem;
+  cursor: pointer;
+}
+
+.canvas-bg-option:hover {
+  background: rgba(15, 23, 42, 0.06);
+}
+
+.canvas-bg-option.is-active {
+  border-color: rgba(15, 23, 42, 0.45);
+  box-shadow: inset 0 0 0 1px rgba(15, 23, 42, 0.15);
+}
+
+.canvas-bg-chip {
+  width: 20px;
+  height: 20px;
+  border-radius: 6px;
+  border: 1px solid rgba(15, 23, 42, 0.2);
+  flex: 0 0 auto;
+}
+
+.canvas-bg-chip.bg-paper { background: #f8fafc; }
+.canvas-bg-chip.bg-sunset { background: #fff7ed; }
+.canvas-bg-chip.bg-mint { background: #ecfeff; }
+.canvas-bg-chip.bg-midnight { background: #0f172a; }
+.canvas-bg-chip.bg-dots-slate {
+  background-color: #f8fafc;
+  background-image: radial-gradient(circle, rgba(15, 23, 42, 0.34) 1px, transparent 1px);
+  background-size: 7px 7px;
+}
+.canvas-bg-chip.bg-dots-indigo {
+  background-color: #eef2ff;
+  background-image: radial-gradient(circle, rgba(67, 56, 202, 0.45) 1px, transparent 1px);
+  background-size: 7px 7px;
+}
+.canvas-bg-chip.bg-lines-sky {
+  background-color: #f0f9ff;
+  background-image: linear-gradient(to right, rgba(2, 132, 199, 0.22) 1px, transparent 1px);
+  background-size: 10px 10px;
+}
+.canvas-bg-chip.bg-lines-graph {
+  background-color: #f0fdf4;
+  background-image:
+    linear-gradient(to right, rgba(22, 101, 52, 0.2) 1px, transparent 1px),
+    linear-gradient(to bottom, rgba(22, 101, 52, 0.2) 1px, transparent 1px);
+  background-size: 10px 10px;
+}
+
+.canvas-page[data-bg="paper"] .tl-background {
+  background-color: #f8fafc;
+}
+
+.canvas-page[data-bg="sunset"] .tl-background {
+  background-color: #fff7ed;
+}
+
+.canvas-page[data-bg="mint"] .tl-background {
+  background-color: #ecfeff;
+}
+
+.canvas-page[data-bg="midnight"] .tl-background {
+  background-color: #0f172a;
+}
+
+.canvas-page[data-bg="dots-slate"] .tl-background {
+  background-color: #f8fafc;
+}
+
+.canvas-page[data-bg="dots-indigo"] .tl-background {
+  background-color: #eef2ff;
+}
+
+.canvas-page[data-bg="dots-slate"] .tl-grid-dot {
+  fill: rgba(15, 23, 42, 0.34);
+}
+
+.canvas-page[data-bg="dots-indigo"] .tl-grid-dot {
+  fill: rgba(67, 56, 202, 0.42);
+}
+
+.canvas-page[data-bg="dots-slate"] .tl-grid,
+.canvas-page[data-bg="dots-indigo"] .tl-grid {
+  opacity: 1;
+}
+
+.canvas-page[data-bg="lines-sky"] .tl-background {
+  background-color: #f0f9ff;
+  background-image: linear-gradient(to right, rgba(2, 132, 199, 0.2) 1px, transparent 1px);
+  background-size: calc(18px * var(--canvas-zoom)) calc(18px * var(--canvas-zoom));
+}
+
+.canvas-page[data-bg="lines-graph"] .tl-background {
+  background-color: #f0fdf4;
+  background-image:
+    linear-gradient(to right, rgba(22, 101, 52, 0.16) 1px, transparent 1px),
+    linear-gradient(to bottom, rgba(22, 101, 52, 0.16) 1px, transparent 1px);
+  background-size: calc(18px * var(--canvas-zoom)) calc(18px * var(--canvas-zoom));
 }
 
 .canvas-style-panel-anchor {

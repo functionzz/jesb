@@ -358,14 +358,24 @@ export function CodeNodeComponent({ shape, node }: NodeComponentProps<CodeNode>)
 			>
 				<div className="CodeNode-editor-header">
 					<span>python</span>
-					<button
-						onClick={executePython}
-						disabled={isRunning}
-						className="CodeNode-run-button"
-						onPointerDown={onPointerDown}
-					>
-						{isRunning ? 'Running...' : 'Run'}
-					</button>
+					<div className="CodeNode-header-actions">
+						<button
+							onClick={() => setOutput(null)}
+							disabled={!output}
+							className="CodeNode-clear-button"
+							onPointerDown={onPointerDown}
+						>
+							Clear
+						</button>
+						<button
+							onClick={executePython}
+							disabled={isRunning}
+							className="CodeNode-run-button"
+							onPointerDown={onPointerDown}
+						>
+							{isRunning ? 'Running...' : 'Run'}
+						</button>
+					</div>
 				</div>
 				<CodeMirror
 					value={node.code}

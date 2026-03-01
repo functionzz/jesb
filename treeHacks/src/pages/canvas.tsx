@@ -3,7 +3,7 @@ import { Tldraw, Editor, DefaultActionsMenu, DefaultQuickActions, DefaultStylePa
 import "tldraw/tldraw.css";
 import { CodeBlockUtil, CodeBlockTool } from "../shapes/CodeBlock";
 import { useNavigate, useSearchParams } from "react-router-dom";
-import { saveCanvasPreview, touchCanvas, upsertCanvas } from "@/lib/canvasStore";
+import { loadCanvasBackground, saveCanvasBackground, saveCanvasPreview, touchCanvas, upsertCanvas } from "@/lib/canvasStore";
 import { getApiBaseUrl } from '../lib/auth'
 const API_BASE = getApiBaseUrl();
 
@@ -72,10 +72,33 @@ const options: Partial<TldrawOptions> = {
 	maxPages: 1,
 }
 
+type CanvasBackgroundPreset =
+  | "paper"
+  | "sunset"
+  | "mint"
+  | "midnight"
+  | "dots-slate"
+  | "dots-indigo"
+  | "lines-sky"
+  | "lines-graph";
+
+const backgroundOptions: Array<{ id: CanvasBackgroundPreset; label: string }> = [
+  { id: "paper", label: "Paper" },
+  { id: "sunset", label: "Sunset" },
+  { id: "mint", label: "Mint" },
+  { id: "midnight", label: "Midnight" },
+  { id: "dots-slate", label: "Dots Slate" },
+  { id: "dots-indigo", label: "Dots Indigo" },
+  { id: "lines-sky", label: "Lines Sky" },
+  { id: "lines-graph", label: "Lines Graph" },
+];
+
 export default function CanvasPage() {
   const saveFeedbackTimerRef = useRef<number | null>(null)
   const isSavingRef = useRef(false)
   const lastSavedShapesRef = useRef<string | null>(null)
+  const canvasPageRef = useRef<HTMLDivElement | null>(null)
+  const zoomSyncRafRef = useRef<number | null>(null)
 
     async function fetchData(url: string) {
         try {
@@ -99,7 +122,12 @@ export default function CanvasPage() {
   const [searchParams] = useSearchParams();
   const navigate = useNavigate();
   const [activeCanvasId, setActiveCanvasId] = useState<string | null>(null);
+  const [activeEditor, setActiveEditor] = useState<Editor | null>(null);
   const [saveState, setSaveState] = useState<"idle" | "saving" | "saved" | "error" | "autosaving" | "autosaved" | "autoerror">("idle");
+  const [isOptionsOpen, setIsOptionsOpen] = useState(false);
+  const [backgroundPreset, setBackgroundPreset] = useState<CanvasBackgroundPreset>("paper");
+  const [isClearModalOpen, setIsClearModalOpen] = useState(false);
+  const [isClearingCanvas, setIsClearingCanvas] = useState(false);
 
   const canvasId = searchParams.get("id");
   useEffect(() => {
@@ -107,6 +135,12 @@ export default function CanvasPage() {
       setActiveCanvasId(canvasId);
     }
   }, [canvasId]);
+
+  useEffect(() => {
+    if (!activeCanvasId) return;
+    const stored = loadCanvasBackground(activeCanvasId) as CanvasBackgroundPreset | null;
+    setBackgroundPreset(stored ?? "paper");
+  }, [activeCanvasId]);
 
   const createCanvas = async () => {
     try {
@@ -183,12 +217,47 @@ export default function CanvasPage() {
 
   const handleMount = (editor: Editor) => {
     editorRef.current = editor;
+    setActiveEditor(editor);
+    if (canvasPageRef.current) {
+      canvasPageRef.current.style.setProperty('--canvas-zoom', `${editor.getZoomLevel()}`)
+    }
   };
 
   useEffect(() => {
     if (!activeCanvasId || !editorRef.current) return;
     loadShapes(activeCanvasId);
   }, [activeCanvasId]);
+
+  useEffect(() => {
+    const editor = activeEditor
+    const container = canvasPageRef.current
+    if (!editor || !container) return
+
+    let lastZoom = -1
+    const updateZoomVariable = () => {
+      const zoom = editor.getZoomLevel()
+      if (Math.abs(zoom - lastZoom) > 0.01) {
+        container.style.setProperty('--canvas-zoom', `${zoom}`)
+        lastZoom = zoom
+      }
+      zoomSyncRafRef.current = window.requestAnimationFrame(updateZoomVariable)
+    }
+
+    zoomSyncRafRef.current = window.requestAnimationFrame(updateZoomVariable)
+
+    return () => {
+      if (zoomSyncRafRef.current !== null) {
+        window.cancelAnimationFrame(zoomSyncRafRef.current)
+        zoomSyncRafRef.current = null
+      }
+    }
+    }, [activeCanvasId, activeEditor])
+
+    useEffect(() => {
+      if (!activeEditor) return
+      const shouldUseDotGrid = backgroundPreset === "dots-slate" || backgroundPreset === "dots-indigo"
+      activeEditor.updateInstanceState({ isGridMode: shouldUseDotGrid })
+    }, [activeEditor, backgroundPreset])
 
   useEffect(() => {
     return () => {
@@ -278,6 +347,43 @@ export default function CanvasPage() {
     void persistShapes(activeCanvasId, true)
   }
 
+  const applyBackground = (preset: CanvasBackgroundPreset) => {
+    setBackgroundPreset(preset);
+    if (activeCanvasId) {
+      saveCanvasBackground(activeCanvasId, preset);
+    }
+  };
+
+  const openClearModal = () => {
+    setIsClearModalOpen(true);
+  };
+
+  const closeClearModal = () => {
+    if (isClearingCanvas) return;
+    setIsClearModalOpen(false);
+  };
+
+  const clearEntireCanvas = async () => {
+    if (!editorRef.current || !activeCanvasId) {
+      setIsClearModalOpen(false);
+      return;
+    }
+
+    setIsClearingCanvas(true);
+    try {
+      const shapeIds = editorRef.current.getCurrentPageShapes().map((shape) => shape.id);
+      if (shapeIds.length > 0) {
+        editorRef.current.deleteShapes(shapeIds);
+      }
+
+      lastSavedShapesRef.current = null;
+      await persistShapes(activeCanvasId, true);
+      setIsClearModalOpen(false);
+    } finally {
+      setIsClearingCanvas(false);
+    }
+  };
+
   useEffect(() => {
     if (!activeCanvasId) return
 
@@ -309,7 +415,7 @@ export default function CanvasPage() {
     );
   }
   return (
-    <div className="canvas-page">
+    <div className="canvas-page" data-bg={backgroundPreset} ref={canvasPageRef}>
         <Tldraw
           key={activeCanvasId}
           persistenceKey={`workflow-${activeCanvasId}`}
@@ -340,12 +446,26 @@ export default function CanvasPage() {
       <div className="canvas-top-left-actions">
         <button
           onClick={() => navigate("/dashboard")}
-          className="dash-btn dash-btn-ghost"
+          className="dash-btn dash-btn-outline"
         >
           Back to Dashboard
         </button>
       </div>
       <div className="canvas-top-right-actions">
+        <button
+          onClick={openClearModal}
+          className="dash-btn dash-btn-outline"
+        >
+          Clear Canvas
+        </button>
+        <button
+          onClick={() => setIsOptionsOpen((open) => !open)}
+          className="dash-btn dash-btn-outline"
+          aria-expanded={isOptionsOpen}
+          aria-haspopup="menu"
+        >
+          Options
+        </button>
         <button
           onClick={exportShapes}
           className={`dash-btn ${saveState === "idle" || saveState === "saved" ? "dash-btn-saved" : "dash-btn-primary"}`}
@@ -366,6 +486,49 @@ export default function CanvasPage() {
                 : "Saved"}
         </button>
       </div>
+
+      {isClearModalOpen ? (
+        <div className="dash-modal-backdrop" onClick={closeClearModal}>
+          <div className="dash-modal" onClick={(event) => event.stopPropagation()}>
+            <h3 className="dash-modal-title">Clear Canvas</h3>
+            <p className="dash-modal-subtitle">
+              Clear all nodes and connections from this canvas? This will save the canvas as empty.
+            </p>
+            <div className="dash-modal-actions">
+              <button className="dash-btn dash-btn-ghost" onClick={closeClearModal} disabled={isClearingCanvas}>
+                Cancel
+              </button>
+              <button
+                className="dash-btn dash-btn-primary"
+                onClick={() => void clearEntireCanvas()}
+                disabled={isClearingCanvas}
+              >
+                {isClearingCanvas ? "Clearing..." : "Clear"}
+              </button>
+            </div>
+          </div>
+        </div>
+      ) : null}
+
+      {isOptionsOpen ? (
+        <div className="canvas-options-panel" role="menu">
+          <div className="canvas-options-title">Background</div>
+          <div className="canvas-options-grid">
+            {backgroundOptions.map((option) => (
+              <button
+                key={option.id}
+                className={`canvas-bg-option ${backgroundPreset === option.id ? "is-active" : ""}`}
+                onClick={() => applyBackground(option.id)}
+                role="menuitemradio"
+                aria-checked={backgroundPreset === option.id}
+              >
+                <span className={`canvas-bg-chip bg-${option.id}`} />
+                <span>{option.label}</span>
+              </button>
+            ))}
+          </div>
+        </div>
+      ) : null}
     </div>
   )
 }
